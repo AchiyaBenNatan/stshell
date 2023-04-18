@@ -209,8 +209,6 @@ void execute_input(char* input) {
     }
     if (strcmp(args[0], "exit") == 0) {
         exit(EXIT_SUCCESS);
-    } else if (strcmp(args[0], "history") == 0) {
-        //print_history();
     } else {
         execute_pipeline(args, n_args);
     }
