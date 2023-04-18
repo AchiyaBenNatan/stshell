@@ -85,19 +85,20 @@ void execute_pipeline(char* args[MAX_ARGS], int n_args) {
     }
 }
 
+
 void execute_command(char* args[MAX_ARGS], int input_fd, int output_fd) {
-    //Handle built-in commands
-    if (strcmp(args[0], "cd") == 0) {
-        if (args[1] == NULL) {
-            // No argument provided to cd, go to home directory
-            chdir(getenv("HOME"));
-        } else {
-            if (chdir(args[1]) != 0) {
-                fprintf(stderr, "cd: %s: No such file or directory\n", args[1]); 
-            }
-        }
-        return;
-    }
+    // Handle built-in commands
+    // if (strcmp(args[0], "cd") == 0) {
+    //     if (args[1] == NULL) {
+    //         // No argument provided to cd, go to home directory
+    //         chdir(getenv("HOME"));
+    //     } else {
+    //         if (chdir(args[1]) != 0) {
+    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
+    //         }
+    //     }
+    //     return;
+    // }
 
     // Fork to execute command
     pid_t pid = fork();
@@ -189,23 +190,12 @@ int main() {
         // Tokenize the input into arguments
         n_args = 0;
         args[n_args] = strtok(input, " \t\n|");
-        char *strings[100];
-        int count = 0;
-        memset(strings, 0, sizeof(strings));
         while (args[n_args] != NULL) {
-            if (strcmp(args[n_args],"|"))
-            {
-                strings[count++] = args[n_args];
-            }
             n_args++;
             args[n_args] = strtok(NULL, " \n");
         }
-        printf("0: %s\n",strings[0]);
-        printf("1: %s\n",strings[1]);
-        printf("2: %s\n",strings[2]);
         // Check for output redirection
         for (int i = 0; i < n_args - 1; i++) {
-            printf("%s\n",args[i]);
             if (strcmp(args[i], ">") == 0) {
                 output_fd = open(args[i+1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (output_fd < 0) {
@@ -251,7 +241,6 @@ int main() {
         for (int i = 0; i < n_args; i++) {
             
             if (strcmp(args[i], "|") == 0) {
-                printf("sss\n");
                 execute_pipeline(args,n_args);
                 output_fd = STDOUT_FILENO;
                 break;
