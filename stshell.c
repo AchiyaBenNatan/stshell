@@ -31,9 +31,62 @@ void parse_input_pipe(char* input, char* args[MAX_ARGS]) {
     }
     args[i] = NULL;
 }
+void execute_pipeline(char* args[MAX_ARGS], int n_args) {
+    int i;
+    char* cmds[MAX_PIPES][MAX_ARGS];
+    int n_cmds = 0;
+    int cmd_start = 0;
+
+    // Parse the commands in the pipeline
+    for (i = 0; i < n_args; i++) {
+        if (strcmp(args[i], "|") == 0) {
+            if (n_cmds >= MAX_PIPES) {
+                fprintf(stderr, "Error: too many pipes\n");
+                return;
+            }
+            args[i] = NULL;
+            parse_input(cmd_start == 0 ? args[0] : args[cmd_start], cmds[n_cmds]);
+            n_cmds++;
+            cmd_start = i + 1;
+        }
+    }
+    if (cmd_start < n_args) {
+        if (n_cmds >= MAX_PIPES) {
+            fprintf(stderr, "Error: too many pipes\n");
+            return;
+        }
+        parse_input(args[cmd_start], cmds[n_cmds]);
+        n_cmds++;
+    }
+
+    // Execute the pipeline
+    int input_fd = STDIN_FILENO;
+    int output_fd = STDOUT_FILENO;
+    int pipe_fds[MAX_PIPES][2];
+    for (i = 0; i < n_cmds; i++) {
+        if (i < n_cmds - 1) {
+            if (pipe(pipe_fds[i]) < 0) {
+                perror("pipe");
+                return;
+            }
+            output_fd = pipe_fds[i][1];
+        } else {
+            output_fd = STDOUT_FILENO;
+        }
+        execute_command(cmds[i], input_fd, output_fd);
+        if (i > 0) {
+            close(pipe_fds[i-1][1]);
+        }
+        input_fd = pipe_fds[i][0];
+    }
+    for (i = 0; i < n_cmds - 1; i++) {
+        close(pipe_fds[i][0]);
+        close(pipe_fds[i][1]);
+    }
+}
 
 void execute_command(char* args[MAX_ARGS], int input_fd, int output_fd) {
-    // Handle built-in commands
+    //Handle built-in commands
     if (strcmp(args[0], "cd") == 0) {
         if (args[1] == NULL) {
             // No argument provided to cd, go to home directory
@@ -82,119 +135,6 @@ void execute_command(char* args[MAX_ARGS], int input_fd, int output_fd) {
     int status;
     wait(&status);
 }
-
-
-
-
-void execute_pipeline(char* args[MAX_ARGS], int num_args) {
-    // Initialize pipes array
-    int pipes[MAX_PIPES][2];
-    for (int i = 0; i < MAX_PIPES; i++) {
-        pipes[i][0] = -1;
-        pipes[i][1] = -1;
-    }
-
-    // Loop through commands in pipeline
-    int cmd_start = 0;
-    int cmd_end = 0;
-    while (cmd_end < num_args) {
-        // Find next command
-        while (cmd_end < num_args && strcmp(args[cmd_end], "|") != 0) {
-            cmd_end++;
-        }
-
-        // Check if this is the last command in the pipeline
-        int last_cmd = (cmd_end == num_args);
-
-        // Set up input/output for command
-        int input_fd = STDIN_FILENO;
-        int output_fd = STDOUT_FILENO;
-        if (cmd_start > 0) {
-            // There is a previous command, redirect input from pipe
-            input_fd = pipes[cmd_start-1][0];
-            close(pipes[cmd_start-1][1]);
-            pipes[cmd_start-1][0] = -1;
-            pipes[cmd_start-1][1] = -1;
-        }
-        if (!last_cmd) {
-            // This is not the last command, create pipe for output
-            if (pipe(pipes[cmd_start]) < 0) {
-                perror("pipe");
-                exit(1);
-            }
-            output_fd = pipes[cmd_start][1];
-        }
-        if (cmd_end < num_args) {
-            // There is a next command, redirect output to pipe
-            close(pipes[cmd_start][1]);
-            pipes[cmd_start][1] = -1;
-            output_fd = pipes[cmd_start][0];
-        }
-
-        // Fork to execute command
-        pid_t pid = fork();
-
-        if (pid == 0) {  // Child process
-            // Set signal handler for SIGINT (Ctrl+C)
-            signal(SIGINT, SIG_DFL);
-
-            // Redirect input/output if necessary
-            if (input_fd != STDIN_FILENO) {
-                if (dup2(input_fd, STDIN_FILENO) < 0) {
-                    perror("dup2");
-                    exit(1);
-                }
-                close(input_fd);
-            }
-            if (output_fd != STDOUT_FILENO) {
-                if (dup2(output_fd, STDOUT_FILENO) < 0) {
-                    perror("dup2");
-                    exit(1);
-                }
-                close(output_fd);
-            }
-
-            // Execute command
-            execvp(args[cmd_start], &args[cmd_start]);
-            perror("execvp");
-            exit(1);
-        } else if (pid < 0) {
-            perror("fork");
-            exit(1);
-        }
-
-        // Store pipe for next command
-        if (!last_cmd) {
-            close(pipes[cmd_start][1]);
-        }
-
-        // Move to next command
-        cmd_start = cmd_end + 1;
-        cmd_end = cmd_start;
-    }
-
-        // Close all pipes
-    for (int i = 0; i < MAX_PIPES; i++) {
-        if (pipes[i][0] != -1) {
-            close(pipes[i][0]);
-        }
-        if (pipes[i][1] != -1) {
-            close(pipes[i][1]);
-        }
-    }
-
-    // Wait for all child processes to finish
-    int status;
-    pid_t pid;
-    while ((pid = wait(&status)) != -1) {
-        if (WIFEXITED(status)) {
-            printf("Process %d exited with status %d\n", pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            printf("Process %d killed by signal %d\n", pid, WTERMSIG(status));
-        }
-    }
-}
-
 
 void execute_input(char* input) {
     //add_to_history(input);
@@ -248,15 +188,24 @@ int main() {
 
         // Tokenize the input into arguments
         n_args = 0;
-        args[n_args] = strtok(input, " \t\n");
+        args[n_args] = strtok(input, " \t\n|");
+        char *strings[100];
+        int count = 0;
+        memset(strings, 0, sizeof(strings));
         while (args[n_args] != NULL) {
-            
+            if (strcmp(args[n_args],"|"))
+            {
+                strings[count++] = args[n_args];
+            }
             n_args++;
-            args[n_args] = strtok(NULL, " \t\n");
+            args[n_args] = strtok(NULL, " \n");
         }
-
+        printf("0: %s\n",strings[0]);
+        printf("1: %s\n",strings[1]);
+        printf("2: %s\n",strings[2]);
         // Check for output redirection
         for (int i = 0; i < n_args - 1; i++) {
+            printf("%s\n",args[i]);
             if (strcmp(args[i], ">") == 0) {
                 output_fd = open(args[i+1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (output_fd < 0) {
@@ -302,7 +251,8 @@ int main() {
         for (int i = 0; i < n_args; i++) {
             
             if (strcmp(args[i], "|") == 0) {
-                execute_command(args, STDIN_FILENO, output_fd);
+                printf("sss\n");
+                execute_pipeline(args,n_args);
                 output_fd = STDOUT_FILENO;
                 break;
             }
