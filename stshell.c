@@ -93,7 +93,7 @@ void execute_command(char* args[MAX_ARGS], int input_fd, int output_fd) {
             chdir(getenv("HOME"));
         } else {
             if (chdir(args[1]) != 0) {
-                fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
+                fprintf(stderr, "cd: %s: No such file or directory\n", args[1]); 
             }
         }
         return;
