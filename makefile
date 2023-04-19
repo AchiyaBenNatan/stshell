@@ -8,6 +8,7 @@ EXEC = stshell
 .PHONY: all clean
 
 all: $(EXEC)
+defult : $(EXEC)
 
 $(EXEC): $(OBJ)
 	$(CC) $(CFLAGS) $^ -o $@
