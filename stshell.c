@@ -62,7 +62,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
         {
             if (dup2(input_fd, STDIN_FILENO) < 0)
             {
-                //perror("dup2");
+                perror("dup2");
                 exit(1);
             }
             close(input_fd);
@@ -71,7 +71,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
         {
             if (dup2(output_fd, STDOUT_FILENO) < 0)
             {
-                //perror("dup2");
+                perror("dup2");
                 exit(1);
             }
             close(output_fd);
@@ -79,7 +79,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 
         // Execute command
         execvp(args[0], args);
-        //perror("execvp");
+        perror("execvp");
         exit(1);
     }
     else if (pid < 0)
@@ -120,7 +120,7 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
             n_comm++;
         }
     }
-
+    memset(pipe_fds,0,sizeof(pipe_fds));
     // Create pipes
     for (int i = 0; i < n_pipes; i++)
     {
@@ -135,13 +135,11 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
     for (int i = 0; i <= n_pipes; i++)
     {
         // Determine input/output fds
-        //int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i - 1][0];
-        //int output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
-        int input_fd = 0;
-        int output_fd = 0;
+        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i][0],
+        output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
+        //int input_fd = 0, output_fd = 0;
         // Execute command
         execute_command(pipe_args[i], input_fd, output_fd);
-        //printf("%s\n", *pipe_args[i]);
 
         // Close pipe fds if not needed
         if (i > 0)
