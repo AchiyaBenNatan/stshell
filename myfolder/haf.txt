@@ -1,3 +1,0 @@
-total 4
--rw-rw-r-- 1 vboxuser vboxuser 23 Apr 18 14:59 haf
--rw-r--r-- 1 vboxuser vboxuser  0 Apr 18 16:13 haf.txt
