@@ -7,7 +7,6 @@
 #include <sys/wait.h>
 
 #define MAX_ARGS 10
-#define MAX_CMD_LENGTH 100
 #define MAX_PIPES 3
 
 void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
