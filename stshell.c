@@ -62,7 +62,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
         {
             if (dup2(input_fd, STDIN_FILENO) < 0)
             {
-                perror("dup2");
+                //perror("dup2");
                 exit(1);
             }
             close(input_fd);
@@ -71,7 +71,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
         {
             if (dup2(output_fd, STDOUT_FILENO) < 0)
             {
-                perror("dup2");
+                //perror("dup2");
                 exit(1);
             }
             close(output_fd);
@@ -79,7 +79,7 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 
         // Execute command
         execvp(args[0], args);
-        perror("execvp");
+        //perror("execvp");
         exit(1);
     }
     else if (pid < 0)
@@ -94,95 +94,66 @@ void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 }
 void execute_pipeline(char *args[MAX_ARGS], int n_args)
 {
-    int i;
-    char *cmds[MAX_PIPES][MAX_ARGS];
-    int n_cmds = 0;
-    int cmd_start = 0;
+    char *pipe_args[MAX_PIPES][MAX_ARGS];
+    int pipe_fds[MAX_PIPES][2];
+    int n_pipes = 0, n_comm = 0;
+    memset(pipe_args, 0, sizeof(pipe_args));
 
-    // Parse the commands in the pipeline
-    for (i = 0; i < n_args; i++)
+    // Parse pipeline into separate commands
+    for (int i = 0; i < n_args; i++)
     {
         if (strcmp(args[i], "|") == 0)
         {
-            if (n_cmds >= MAX_PIPES)
+            if (n_pipes >= MAX_PIPES)
             {
                 fprintf(stderr, "Error: too many pipes\n");
                 return;
             }
-            args[i] = NULL;
-            parse_input(cmd_start == 0 ? args[0] : args[cmd_start], cmds[n_cmds]);
-            n_cmds++;
-            cmd_start = i + 1;
-        }
-    }
-    if (cmd_start < n_args)
-    {
-        if (n_cmds >= MAX_PIPES)
-        {
-            fprintf(stderr, "Error: too many pipes\n");
-            return;
-        }
-        parse_input(args[cmd_start], cmds[n_cmds]);
-        n_cmds++;
-    }
-
-    // Execute the pipeline
-    int input_fd = STDIN_FILENO;
-    int output_fd = STDOUT_FILENO;
-    int pipe_fds[MAX_PIPES][2];
-    for (i = 0; i < n_cmds; i++)
-    {
-        if (i < n_cmds - 1)
-        {
-            if (pipe(pipe_fds[i]) < 0)
-            {
-                perror("pipe");
-                return;
-            }
-            output_fd = pipe_fds[i][1];
+            // pipe_args[n_pipes][0] = NULL;
+            n_pipes++;
+            n_comm = 0;
         }
         else
         {
-            output_fd = STDOUT_FILENO;
+            pipe_args[n_pipes][n_comm % MAX_ARGS] = args[i];
+            pipe_args[n_pipes][n_comm % MAX_ARGS + 1] = NULL;
+            n_comm++;
         }
+    }
 
-        pid_t pid = fork();
-        if (pid < 0)
+    // Create pipes
+    for (int i = 0; i < n_pipes; i++)
+    {
+        if (pipe(pipe_fds[i]) == -1)
         {
-            perror("fork");
+            perror("pipe");
             return;
         }
-        else if (pid == 0)
-        { // child process
-            if (i > 0)
-            {
-                close(pipe_fds[i - 1][1]);
-                dup2(pipe_fds[i - 1][0], STDIN_FILENO);
-            }
-            else
-            {
-                dup2(input_fd, STDIN_FILENO);
-            }
+    }
+
+    // Execute commands in pipeline
+    for (int i = 0; i <= n_pipes; i++)
+    {
+        // Determine input/output fds
+        //int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i - 1][0];
+        //int output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
+        int input_fd = 0;
+        int output_fd = 0;
+        // Execute command
+        execute_command(pipe_args[i], input_fd, output_fd);
+        //printf("%s\n", *pipe_args[i]);
+
+        // Close pipe fds if not needed
+        if (i > 0)
+        {
+            close(pipe_fds[i - 1][0]);
+            close(pipe_fds[i - 1][1]);
+        }
+        if (i < n_pipes)
+        {
             close(pipe_fds[i][0]);
-            dup2(output_fd, STDOUT_FILENO);
-            execvp(cmds[i][0], cmds[i]);
-            perror("execvp");
-            exit(1);
+            close(pipe_fds[i][1]);
         }
-        else
-        { // parent process
-            if (i > 0)
-            {
-                close(pipe_fds[i - 1][0]);
-                close(pipe_fds[i - 1][1]);
-            }
-            input_fd = pipe_fds[i][0];
-        }
-    }
-    for (i = 0; i < n_cmds - 1; i++)
-    {
-        close(pipe_fds[i][0]);
-        close(pipe_fds[i][1]);
     }
 }
 
@@ -306,7 +277,7 @@ int main()
                 break;
             }
         }
-
+        int pipe =0;
         // Check for pipeline
         for (int i = 0; i < n_args; i++)
         {
@@ -315,12 +286,13 @@ int main()
             {
                 execute_pipeline(args, n_args);
                 output_fd = STDOUT_FILENO;
+                pipe = 1;
                 break;
             }
         }
 
         // Execute the command
-        if (n_args > 0)
+        if (n_args > 0 && pipe==0)
         {
             execute_command(args, STDIN_FILENO, output_fd);
             output_fd = STDOUT_FILENO;
