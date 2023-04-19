@@ -10,45 +10,20 @@
 #define MAX_CMD_LENGTH 100
 #define MAX_PIPES 3
 
-void parse_input(char *input, char *args[MAX_ARGS])
-{
-    int i = 0;
-    char *token = strtok(input, " \t\n");
-    while (token != NULL)
-    {
-        args[i] = token;
-        i++;
-        token = strtok(NULL, " \t\n");
-    }
-    args[i] = NULL;
-}
-void parse_input_pipe(char *input, char *args[MAX_ARGS])
-{
-    int i = 0;
-    char *token = strtok(input, "|");
-    while (token != NULL)
-    {
-        args[i] = token;
-        i++;
-        token = strtok(NULL, "|");
-    }
-    args[i] = NULL;
-}
 void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 {
-    // Handle built-in commands
-    // if (strcmp(args[0], "cd") == 0) {
-    //     if (args[1] == NULL) {
-    //         // No argument provided to cd, go to home directory
-    //         chdir(getenv("HOME"));
-    //     } else {
-    //         if (chdir(args[1]) != 0) {
-    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
-    //         }
-    //     }
-    //     return;
-    // }
-
+    //Handle built-in commands
+    if (strcmp(args[0], "cd") == 0) {
+        if (args[1] == NULL) {
+            // No argument provided to cd, go to home directory
+            chdir(getenv("HOME"));
+        } else {
+            if (chdir(args[1]) != 0) {
+                fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
+            }
+        }
+        return;
+    }
     // Fork to execute command
     pid_t pid = fork();
 
@@ -98,8 +73,6 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
     int pipe_fds[MAX_PIPES][2];
     int n_pipes = 0, n_comm = 0;
     memset(pipe_args, 0, sizeof(pipe_args));
-
-    // Parse pipeline into separate commands
     for (int i = 0; i < n_args; i++)
     {
         if (strcmp(args[i], "|") == 0)
@@ -109,7 +82,6 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
                 fprintf(stderr, "Error: too many pipes\n");
                 return;
             }
-            // pipe_args[n_pipes][0] = NULL;
             n_pipes++;
             n_comm = 0;
         }
@@ -122,7 +94,7 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
     }
     memset(pipe_fds,0,sizeof(pipe_fds));
     // Create pipes
-    for (int i = 0; i < n_pipes; i++)
+    for (int i = 0; i <= n_pipes; i++)
     {
         if (pipe(pipe_fds[i]) == -1)
         {
@@ -137,7 +109,6 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
         // Determine input/output fds
         int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i][0],
         output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
-        //int input_fd = 0, output_fd = 0;
         // Execute command
         execute_command(pipe_args[i], input_fd, output_fd);
 
@@ -152,30 +123,6 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
             close(pipe_fds[i][0]);
             close(pipe_fds[i][1]);
         }
-    }
-}
-
-void execute_input(char *input)
-{
-    // add_to_history(input);
-    char *args[MAX_ARGS];
-    parse_input(input, args);
-    int n_args = 0;
-    while (args[n_args] != NULL)
-    {
-        n_args++;
-    }
-    if (n_args == 0)
-    {
-        return;
-    }
-    if (strcmp(args[0], "exit") == 0)
-    {
-        exit(EXIT_SUCCESS);
-    }
-    else
-    {
-        execute_pipeline(args, n_args);
     }
 }
 
@@ -224,6 +171,7 @@ int main()
             n_args++;
             args[n_args] = strtok(NULL, " \n");
         }
+        int pipe =0;
         // Check for output redirection
         for (int i = 0; i < n_args - 1; i++)
         {
@@ -275,7 +223,7 @@ int main()
                 break;
             }
         }
-        int pipe =0;
+
         // Check for pipeline
         for (int i = 0; i < n_args; i++)
         {
@@ -287,8 +235,7 @@ int main()
                 pipe = 1;
                 break;
             }
-        }
-
+        }   
         // Execute the command
         if (n_args > 0 && pipe==0)
         {
