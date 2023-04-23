@@ -100,11 +100,11 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
             perror("pipe");
             return;
         }
-    }
+    // }
 
-    // Execute commands in pipeline
-    for (int i = 0; i <= n_pipes; i++)
-    {
+    // // Execute commands in pipeline
+    // for (int i = 0; i <= n_pipes; i++)
+    // {
         // Determine input/output fds
         int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i][0],
         output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
