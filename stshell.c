@@ -1,243 +1,198 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include "stdio.h"
+#include "errno.h"
+#include "stdlib.h"
+#include "unistd.h"
 #include <string.h>
 #include <signal.h>
-#include <fcntl.h>
-#include <sys/wait.h>
 
-#define MAX_ARGS 10
-#define MAX_PIPES 3
+#define OUT 0
+#define APP 1
+#define IN 2
+#define COMMAND_SIZE 1024
+#define LINE_COMMAND_SIZE 50
 
-void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
+#define TRUE 1
+
+#define END_L_STR "\0"
+#define END_L_CHR '\0'
+
+#define EXIT "exit"
+#define SHELLPROMPT "stshell"
+#define CONTROL_C "You typed Control-C!\n"
+
+#define PIPE_STR "|"
+#define PIPE_CHR '|'
+#define EMPTY_STRING " "
+#define EMPTY_CHAR ' '
+#define STDOUT_CHR '>'
+#define STDIN_CHR '<'
+#define APPEND_STR ">>"
+
+
+
+int status;
+char *prompt = SHELLPROMPT;
+int parse_command(char **parsed_command, char *cmd, const char *delimeter)
 {
-    //Handle built-in commands
-    // if (strcmp(args[0], "cd") == 0) {
-    //     if (args[1] == NULL) {
-    //         // No argument provided to cd, go to home directory
-    //         chdir(getenv("HOME"));
-    //     } else {
-    //         if (chdir(args[1]) != 0) {
-    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
-    //         }
-    //     }
-    //     return;
-    // }
-    // Fork to execute command
-    pid_t pid = fork();
+    char *token;
+    token = strtok(cmd, delimeter);
+    int counter = -1;
 
-    if (pid == 0)
-    { // Child process
-        // Set signal handler for SIGINT (Ctrl+C)
-        signal(SIGINT, SIG_DFL);
-
-        // Redirect input/output if necessary
-        if (input_fd != STDIN_FILENO)
-        {
-            if (dup2(input_fd, STDIN_FILENO) < 0)
-            {
-                perror("dup2");
-                exit(1);
-            }
-            close(input_fd);
-        }
-        if (output_fd != STDOUT_FILENO)
-        {
-            if (dup2(output_fd, STDOUT_FILENO) < 0)
-            {
-                perror("dup2");
-                exit(1);
-            }
-            close(output_fd);
-        }
-
-        // Execute command
-        execvp(args[0], args);
-        perror("execvp");
-        exit(1);
-    }
-    else if (pid < 0)
+    while (token)
     {
-        perror("fork");
-        exit(1);
+        parsed_command[++counter] = malloc(strlen(token) + 1);
+        strcpy(parsed_command[counter], token);
+        if (delimeter == PIPE_STR)
+        {
+            if (parsed_command[counter][strlen(token) - 1] == EMPTY_CHAR)
+            {
+                parsed_command[counter][strlen(token) - 1] = END_L_CHR;
+            }
+            if (parsed_command[counter][0] == EMPTY_CHAR)
+            {
+                memmove(parsed_command[counter], parsed_command[counter] + 1, strlen(token));
+            }
+        }
+        parsed_command[counter][strlen(token) + 1] = END_L_CHR;
+        token = strtok(NULL, delimeter);
     }
-
-    // Wait for child process to complete
-    int status;
-    wait(&status);
+    parsed_command[++counter] = NULL;
+    return counter;
 }
-void execute_pipeline(char *args[MAX_ARGS], int n_args)
+
+void pipe_tasks(char *cmd)
 {
-    char *pipe_args[MAX_PIPES][MAX_ARGS];
-    int pipe_fds[MAX_PIPES][2];
-    int n_pipes = 0, n_comm = 0;
-    memset(pipe_args, 0, sizeof(pipe_args));
-    for (int i = 0; i < n_args; i++)
+    char *parsed_command[LINE_COMMAND_SIZE];
+    int commands = parse_command(parsed_command, cmd, PIPE_STR);
+    char *inner_cmd[LINE_COMMAND_SIZE];
+    int fd[commands][2];
+    for (int i = 0; i < commands; ++i)
     {
-        if (strcmp(args[i], "|") == 0)
+        int inner_commands = parse_command(inner_cmd, parsed_command[i], EMPTY_STRING);
+        if (inner_commands < 0)
         {
-            if (n_pipes >= MAX_PIPES)
+            printf("Error parsing command");
+        }
+
+        if (i != commands - 1)
+            pipe(fd[i]);
+
+        if (fork() == 0)
+        {
+            if (i != commands - 1)
             {
-                fprintf(stderr, "Error: too many pipes\n");
-                return;
+                dup2(fd[i][1], 1);
+                close(fd[i][0]);
+                close(fd[i][1]);
             }
-            n_pipes++;
-            n_comm = 0;
+            if (i != 0)
+            { // not parent
+                dup2(fd[i - 1][0], 0);
+                close(fd[i - 1][0]);
+                close(fd[i - 1][1]);
+            }
+            execvp(inner_cmd[0], inner_cmd); // execute
         }
-        else
+        if (i != 0)
         {
-            pipe_args[n_pipes][n_comm % MAX_ARGS] = args[i];
-            pipe_args[n_pipes][n_comm % MAX_ARGS + 1] = NULL;
-            n_comm++;
+            close(fd[i - 1][0]);
+            close(fd[i - 1][1]);
         }
+        wait(NULL); // wait for next command
     }
-    memset(pipe_fds,0,sizeof(pipe_fds));
-    // Create pipes
-    for (int i = 0; i <= n_pipes; i++)
+}
+
+void redirect_tasks(char *command, int direction)
+{
+    if (fork() == 0)
+    { // child
+        char *parsed_command[LINE_COMMAND_SIZE];
+        int commands = parse_command(parsed_command, command, EMPTY_STRING);
+        int fd;
+        switch (direction)
+        {
+        case OUT: // output
+            fd = creat(parsed_command[commands - 1], 0660);
+            dup2(fd, 1);
+            break;
+
+        case APP: // append
+            fd = open(parsed_command[commands - 1], O_CREAT | O_APPEND | O_RDWR, 0660);
+            dup2(fd, 1);
+            break;
+
+        case IN: // input
+            fd = open(parsed_command[commands - 1], O_RDONLY, 0660);
+            dup2(fd, 0);
+            break;
+
+        default:
+            break;
+        }
+
+        parsed_command[commands - 2] = parsed_command[commands - 1] = NULL;
+        execvp(parsed_command[0], parsed_command);
+    }
+    else
     {
-        if (pipe(pipe_fds[i]) == -1)
-        {
-            perror("pipe");
-            return;
-        }
-        // Determine input/output fds
-        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i-1][1];
-        //output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
-        // Execute command
-        execute_command(pipe_args[i], input_fd, pipe_fds[i][1]);
-        // Close pipe fds if not needed
-        if (i>0)
-        {
-            close(pipe_fds[i-1][0]);
-            close(pipe_fds[i-1][1]);
-        }
-    }  
+        wait(&status); // wait for child to finish.
+    }
 }
 
 int main()
 {
-    char input[1024];
-    char *args[MAX_ARGS];
-    int n_args;
-    int output_fd = STDOUT_FILENO;
-    int sigint_flag = 0;
-
-    for (size_t i = 0; i < MAX_ARGS; i++)
-    {
-        args[i] = NULL;
-    }
-
+    // handler for Ctrl+C
     signal(SIGINT, SIG_IGN);
+    char command[COMMAND_SIZE], saved_cmd[COMMAND_SIZE];
 
-    while (1)
+    while (TRUE)
     {
-        // Print the shell prompt
-        printf("stshell> ");
 
-        // Read a line of input
-        if (fgets(input, sizeof(input), stdin) == NULL)
-        {
-            if (sigint_flag)
-            {
-                sigint_flag = 0;
-                continue;
-            }
-            break;
-        }
+        printf("%s: ", prompt);
+        fgets(command, COMMAND_SIZE, stdin);
+        command[strlen(command) - 1] = END_L_CHR;
 
-        // Check for exit command
-        if (strcmp(input, "exit\n") == 0)
+        if (!strcmp(command, EXIT))
         {
             break;
         }
 
-        // Tokenize the input into arguments
-        n_args = 0;
-        args[n_args] = strtok(input, " \t\n|");
-        while (args[n_args] != NULL)
+        else
         {
-            n_args++;
-            args[n_args] = strtok(NULL, " \n");
-        }
-        int pipe =0;
-        // Check for pipeline
-        for (int i = 0; i < n_args; i++)
-        {
-
-            if (strcmp(args[i], "|") == 0)
-            {
-                execute_pipeline(args, n_args);
-                output_fd = STDOUT_FILENO;
-                pipe = 1;
-                break;
-            }
-        } 
-        // Check for output redirection
-        for (int i = 0; i < n_args - 1; i++)
-        {
-            if (strcmp(args[i], ">") == 0)
-            {
-                output_fd = open(args[i + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (output_fd < 0)
-                {
-                    perror("open");
-                    output_fd = STDOUT_FILENO;
-                    break;
-                }
-                memmove(args + i, args + i + 2, (n_args - i - 1) * sizeof(char *));
-                n_args -= 2;
-                i--;
-            }
-            else if (strcmp(args[i], ">>") == 0)
-            {
-                output_fd = open(args[i + 1], O_WRONLY | O_CREAT | O_APPEND, 0644);
-                if (output_fd < 0)
-                {
-                    perror("open");
-                    output_fd = STDOUT_FILENO;
-                    break;
-                }
-                memmove(args + i, args + i + 2, (n_args - i - 1) * sizeof(char *));
-                n_args -= 2;
-                i--;
-            }
+            strcpy(saved_cmd, command);
         }
 
-        // Check for input redirection
-        for (int i = 0; i < n_args - 1; i++)
+        if (strchr(command, PIPE_CHR))
         {
-            if (strcmp(args[i], "<") == 0)
-            {
-                int input_fd = open(args[i + 1], O_RDONLY);
-                if (input_fd < 0)
-                {
-                    perror("open");
-                    break;
-                }
-                memmove(args + i, args + i + 2, (n_args - i - 1) * sizeof(char *));
-                n_args -= 2;
-                i--;
-                execute_command(args, input_fd, output_fd);
-                close(input_fd);
-                output_fd = STDOUT_FILENO;
-                break;
-            }
+            pipe_tasks(command);
         }
 
-          
-        // Execute the command
-        if (n_args > 0 && pipe==0)
+        else if (strchr(command, STDOUT_CHR) && !strstr(command, APPEND_STR))
         {
-            execute_command(args,STDIN_FILENO ,output_fd);
-            output_fd = STDOUT_FILENO;
+            redirect_tasks(command, OUT);
+        }
+
+        else if (strchr(command, STDIN_CHR))
+        {
+            redirect_tasks(command, IN);
+        }
+
+        else if (strstr(command, APPEND_STR))
+        {
+            redirect_tasks(command, APP);
+        }
+        else if (fork() == 0) {
+            char *parsed_command[LINE_COMMAND_SIZE];
+            int inner_commands = parse_command(parsed_command, command, EMPTY_STRING);
+            execvp(parsed_command[0], parsed_command);
+        }
+
+        else {
+            wait(&status);
         }
     }
-
     return 0;
 }
-// vboxuser@Achiya:~/Desktop/stshell$ make
-// make: Nothing to be done for 'all'.
-// vboxuser@Achiya:~/Desktop/stshell$ ./stshell
-// stshell> cat check.txt | sort | uniq > cmp_sort_uniq.txt
-// sort: read failed: -: Bad file descriptor
-// uniq: '>': No such file or directory
