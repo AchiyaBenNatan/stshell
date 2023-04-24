@@ -12,17 +12,17 @@
 void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 {
     //Handle built-in commands
-    if (strcmp(args[0], "cd") == 0) {
-        if (args[1] == NULL) {
-            // No argument provided to cd, go to home directory
-            chdir(getenv("HOME"));
-        } else {
-            if (chdir(args[1]) != 0) {
-                fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
-            }
-        }
-        return;
-    }
+    // if (strcmp(args[0], "cd") == 0) {
+    //     if (args[1] == NULL) {
+    //         // No argument provided to cd, go to home directory
+    //         chdir(getenv("HOME"));
+    //     } else {
+    //         if (chdir(args[1]) != 0) {
+    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
+    //         }
+    //     }
+    //     return;
+    // }
     // Fork to execute command
     pid_t pid = fork();
 
@@ -100,29 +100,15 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
             perror("pipe");
             return;
         }
-    // }
-
-    // // Execute commands in pipeline
-    // for (int i = 0; i <= n_pipes; i++)
-    // {
         // Determine input/output fds
-        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i][0],
+        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i-1][1],
         output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
         // Execute command
         execute_command(pipe_args[i], input_fd, output_fd);
-
         // Close pipe fds if not needed
-        if (i > 0)
-        {
-            close(pipe_fds[i - 1][0]);
-            close(pipe_fds[i - 1][1]);
-        }
-        if (i < n_pipes)
-        {
-            close(pipe_fds[i][0]);
-            close(pipe_fds[i][1]);
-        }
-    }
+        close(pipe_fds[i][0]);
+        close(pipe_fds[i][1]);
+    }  
 }
 
 int main()
@@ -171,6 +157,18 @@ int main()
             args[n_args] = strtok(NULL, " \n");
         }
         int pipe =0;
+        // Check for pipeline
+        for (int i = 0; i < n_args; i++)
+        {
+
+            if (strcmp(args[i], "|") == 0)
+            {
+                execute_pipeline(args, n_args);
+                output_fd = STDOUT_FILENO;
+                pipe = 1;
+                break;
+            }
+        } 
         // Check for output redirection
         for (int i = 0; i < n_args - 1; i++)
         {
@@ -223,22 +221,11 @@ int main()
             }
         }
 
-        // Check for pipeline
-        for (int i = 0; i < n_args; i++)
-        {
-
-            if (strcmp(args[i], "|") == 0)
-            {
-                execute_pipeline(args, n_args);
-                output_fd = STDOUT_FILENO;
-                pipe = 1;
-                break;
-            }
-        }   
+          
         // Execute the command
         if (n_args > 0 && pipe==0)
         {
-            execute_command(args, STDIN_FILENO, output_fd);
+            execute_pipeline(args, n_args);
             output_fd = STDOUT_FILENO;
         }
     }
