@@ -37,9 +37,20 @@ int status;
 char *prompt = SHELLPROMPT;
 int parse_command(char **parsed_command, char *cmd, const char *delimeter)
 {
-    char *token;
-    token = strtok(cmd, delimeter);
-    int counter = -1;
+    //Handle built-in commands
+    // if (strcmp(args[0], "cd") == 0) {
+    //     if (args[1] == NULL) {
+    //         // No argument provided to cd, go to home directory
+    //         chdir(getenv("HOME"));
+    //     } else {
+    //         if (chdir(args[1]) != 0) {
+    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
+    //         }
+    //     }
+    //     return;
+    // }
+    // Fork to execute command
+    pid_t pid = fork();
 
     while (token)
     {
@@ -196,3 +207,9 @@ int main()
     }
     return 0;
 }
+// vboxuser@Achiya:~/Desktop/stshell$ make
+// make: Nothing to be done for 'all'.
+// vboxuser@Achiya:~/Desktop/stshell$ ./stshell
+// stshell> cat check.txt | sort | uniq > cmp_sort_uniq.txt
+// sort: read failed: -: Bad file descriptor
+// uniq: '>': No such file or directory
