@@ -11,18 +11,6 @@
 
 void execute_command(char *args[MAX_ARGS], int input_fd, int output_fd)
 {
-    //Handle built-in commands
-    // if (strcmp(args[0], "cd") == 0) {
-    //     if (args[1] == NULL) {
-    //         // No argument provided to cd, go to home directory
-    //         chdir(getenv("HOME"));
-    //     } else {
-    //         if (chdir(args[1]) != 0) {
-    //             fprintf(stderr, "cd: %s: No such file or directory\n", args[1]);
-    //         }
-    //     }
-    //     return;
-    // }
     // Fork to execute command
     pid_t pid = fork();
 
