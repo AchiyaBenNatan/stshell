@@ -101,13 +101,16 @@ void execute_pipeline(char *args[MAX_ARGS], int n_args)
             return;
         }
         // Determine input/output fds
-        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i-1][1],
-        output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
+        int input_fd = (i == 0) ? STDIN_FILENO : pipe_fds[i-1][1];
+        //output_fd = (i == n_pipes) ? STDOUT_FILENO : pipe_fds[i][1];
         // Execute command
-        execute_command(pipe_args[i], input_fd, output_fd);
+        execute_command(pipe_args[i], input_fd, pipe_fds[i][1]);
         // Close pipe fds if not needed
-        close(pipe_fds[i][0]);
-        close(pipe_fds[i][1]);
+        if (i>0)
+        {
+            close(pipe_fds[i-1][0]);
+            close(pipe_fds[i-1][1]);
+        }
     }  
 }
 
@@ -225,10 +228,16 @@ int main()
         // Execute the command
         if (n_args > 0 && pipe==0)
         {
-            execute_pipeline(args, n_args);
+            execute_command(args,STDIN_FILENO ,output_fd);
             output_fd = STDOUT_FILENO;
         }
     }
 
     return 0;
 }
+// vboxuser@Achiya:~/Desktop/stshell$ make
+// make: Nothing to be done for 'all'.
+// vboxuser@Achiya:~/Desktop/stshell$ ./stshell
+// stshell> cat check.txt | sort | uniq > cmp_sort_uniq.txt
+// sort: read failed: -: Bad file descriptor
+// uniq: '>': No such file or directory
