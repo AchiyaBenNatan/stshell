@@ -10,7 +10,6 @@
 
 #define OUT 0
 #define APP 1
-#define IN 2
 #define COMMAND_SIZE 1024
 #define LINE_COMMAND_SIZE 50
 
@@ -20,18 +19,14 @@
 #define END_L_CHR '\0'
 
 #define EXIT "exit"
-#define SHELLPROMPT "stshell"
-#define CONTROL_C "You typed Control-C!\n"
+#define SHELLPROMPT "stshell>"
 
 #define PIPE_STR "|"
 #define PIPE_CHR '|'
 #define EMPTY_STRING " "
 #define EMPTY_CHAR ' '
 #define STDOUT_CHR '>'
-#define STDIN_CHR '<'
 #define APPEND_STR ">>"
-
-
 
 int status;
 char *prompt = SHELLPROMPT;
@@ -45,7 +40,7 @@ int parse_command(char **parsed_command, char *cmd, const char *delimeter)
     {
         parsed_command[++counter] = malloc(strlen(token) + 1);
         strcpy(parsed_command[counter], token);
-        if (delimeter == PIPE_STR)
+        if (strcmp(delimeter,PIPE_STR)==0)
         {
             if (parsed_command[counter][strlen(token) - 1] == EMPTY_CHAR)
             {
@@ -104,7 +99,6 @@ void pipe_tasks(char *cmd)
         wait(NULL); // wait for next command
     }
 }
-
 void redirect_tasks(char *command, int direction)
 {
     if (fork() == 0)
@@ -124,21 +118,15 @@ void redirect_tasks(char *command, int direction)
             dup2(fd, 1);
             break;
 
-        case IN: // input
-            fd = open(parsed_command[commands - 1], O_RDONLY, 0660);
-            dup2(fd, 0);
-            break;
-
         default:
             break;
         }
-
         parsed_command[commands - 2] = parsed_command[commands - 1] = NULL;
         execvp(parsed_command[0], parsed_command);
     }
     else
     {
-        wait(&status); // wait for child to finish.
+        wait(&status);
     }
 }
 
@@ -147,50 +135,38 @@ int main()
     // handler for Ctrl+C
     signal(SIGINT, SIG_IGN);
     char command[COMMAND_SIZE], saved_cmd[COMMAND_SIZE];
-
     while (TRUE)
     {
-
-        printf("%s: ", prompt);
+        printf("%s ", prompt);
         fgets(command, COMMAND_SIZE, stdin);
         command[strlen(command) - 1] = END_L_CHR;
-
         if (!strcmp(command, EXIT))
         {
             break;
         }
-
         else
         {
             strcpy(saved_cmd, command);
         }
-
         if (strchr(command, PIPE_CHR))
         {
             pipe_tasks(command);
         }
-
         else if (strchr(command, STDOUT_CHR) && !strstr(command, APPEND_STR))
         {
             redirect_tasks(command, OUT);
         }
-
-        else if (strchr(command, STDIN_CHR))
-        {
-            redirect_tasks(command, IN);
-        }
-
         else if (strstr(command, APPEND_STR))
         {
             redirect_tasks(command, APP);
         }
         else if (fork() == 0) {
             char *parsed_command[LINE_COMMAND_SIZE];
-            int inner_commands = parse_command(parsed_command, command, EMPTY_STRING);
+            parse_command(parsed_command, command, EMPTY_STRING);
             execvp(parsed_command[0], parsed_command);
         }
-
-        else {
+        else 
+        {
             wait(&status);
         }
     }

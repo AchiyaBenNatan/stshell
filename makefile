@@ -10,9 +10,6 @@ EXEC = stshell
 all: $(EXEC)
 defult : $(EXEC)
 
-$(EXEC): $(OBJ)
-	$(CC) $(CFLAGS) $^ -o $@
-
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
