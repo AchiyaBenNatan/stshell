@@ -74,13 +74,24 @@ void pipe_tasks(char *cmd)
 
         if (i != commands - 1)
             pipe(fd[i]);
-
+        
         if (fork() == 0)
         {
-            if (strchr(inner_cmd[1], STDOUT_CHR))
+            if (strchr(inner_cmd[1], STDOUT_CHR) && !strstr(inner_cmd[1], APPEND_STR))
             {
                 dup2(fd[i - 1][0], 0);
                 int fd_red = creat(inner_cmd[inner_commands - 1], 0660);
+                dup2(fd_red, 1);
+                close(fd[i - 1][0]);
+                close(fd[i - 1][1]);
+                inner_cmd[inner_commands - 2] = inner_cmd[inner_commands - 1] = NULL;
+                execvp(inner_cmd[0], inner_cmd);
+                close(fd_red);
+            }
+            else if (strstr(inner_cmd[1], APPEND_STR))
+            {
+                dup2(fd[i - 1][0], 0);
+                int fd_red = open(inner_cmd[inner_commands - 1], O_CREAT | O_APPEND | O_RDWR, 0660);
                 dup2(fd_red, 1);
                 close(fd[i - 1][0]);
                 close(fd[i - 1][1]);
