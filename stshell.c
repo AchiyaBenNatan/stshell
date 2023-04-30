@@ -40,7 +40,7 @@ int parse_command(char **parsed_command, char *cmd, const char *delimeter)
     {
         parsed_command[++counter] = malloc(strlen(token) + 1);
         strcpy(parsed_command[counter], token);
-        if (strcmp(delimeter,PIPE_STR)==0)
+        if (strcmp(delimeter, PIPE_STR) == 0)
         {
             if (parsed_command[counter][strlen(token) - 1] == EMPTY_CHAR)
             {
@@ -77,19 +77,33 @@ void pipe_tasks(char *cmd)
 
         if (fork() == 0)
         {
-            if (i != commands - 1)
+            if (strchr(inner_cmd[1], STDOUT_CHR))
             {
-                dup2(fd[i][1], 1);
-                close(fd[i][0]);
-                close(fd[i][1]);
-            }
-            if (i != 0)
-            { // not parent
                 dup2(fd[i - 1][0], 0);
+                int fd_red = creat(inner_cmd[inner_commands - 1], 0660);
+                dup2(fd_red, 1);
                 close(fd[i - 1][0]);
                 close(fd[i - 1][1]);
+                inner_cmd[inner_commands - 2] = inner_cmd[inner_commands - 1] = NULL;
+                execvp(inner_cmd[0], inner_cmd);
+                close(fd_red);
             }
-            execvp(inner_cmd[0], inner_cmd); // execute
+            else
+            {
+                if (i != commands - 1)
+                {
+                    dup2(fd[i][1], 1);
+                    close(fd[i][0]);
+                    close(fd[i][1]);
+                }
+                if (i != 0)
+                {
+                    dup2(fd[i - 1][0], 0);
+                    close(fd[i - 1][0]);
+                    close(fd[i - 1][1]);
+                }
+                execvp(inner_cmd[0], inner_cmd);
+            }
         }
         if (i != 0)
         {
@@ -160,12 +174,13 @@ int main()
         {
             redirect_tasks(command, APP);
         }
-        else if (fork() == 0) {
+        else if (fork() == 0)
+        {
             char *parsed_command[LINE_COMMAND_SIZE];
             parse_command(parsed_command, command, EMPTY_STRING);
             execvp(parsed_command[0], parsed_command);
         }
-        else 
+        else
         {
             wait(&status);
         }
